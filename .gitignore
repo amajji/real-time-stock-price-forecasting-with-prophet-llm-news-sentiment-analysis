@@ -1,0 +1,12 @@
+# Ignore virtual environment folder
+cryptovenv/
+
+# Ignore Python bytecode files
+*.pyc
+
+# Ignore IDE config
+.vscode/
+.idea/
+
+# Ignore log files
+*.log

@@ -1,0 +1,15 @@
+# Ignore Git directory
+.git/
+
+# Ignore the virtual environment folder
+llamavenv/
+
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+
+# Ignore the cache directory
+__pycache__/
+
+# Ignore other unnecessary files
+*.gitignore
