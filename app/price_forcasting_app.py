@@ -8,7 +8,7 @@
 
 #                                          Source Language: Python                                             #
 
-#  Repository:  https://github.com/amajji/real-time-crypto-forcasting-with-arima-prophet-llm-news-sentiment    #
+#  Repository:  https://github.com/amajji/real-time-crypto-forecasting-with-arima-prophet-llm-news-sentiment    #
 
 #                                          --- Code Description ---                                            #
 
@@ -62,7 +62,7 @@ def main():
     st.set_page_config(layout="wide")
     
     # Define the title
-    st.title("✨ Price forcasting with Prophet")
+    st.title("✨ Stock Price forecasting Dashboard")
 
     # Fetch cryptocurrency data (e.g., Bitcoin)
     btc_data = yf.download('BTC-USD', start='2019-01-01', end='2025-01-01')
@@ -248,7 +248,7 @@ def main():
     if model_arima or model_lstm or model_prophet:
         # Spinner for long operations
         with st.spinner('Processing...'):
-            for train_size in range(10, len(merged_data), 10):
+            for train_size in range(10, len(merged_data), 30):
                 # Define train and test datasets
                 data_train, data_test = merged_data[:train_size], merged_data[train_size:] 
                 
@@ -416,12 +416,12 @@ def main():
                 fig_1 = go.Figure()
                 
                 # Add training data
-                fig_1.add_trace(go.Scatter(x=dates, y=y_pred, mode='lines', name='Forcasted price'))
+                fig_1.add_trace(go.Scatter(x=dates, y=y_pred, mode='lines', name='Forecasted price'))
                 fig_1.add_trace(go.Scatter(x=dates, y=y_true, mode='lines', name='Real price'))
 
                 # Layout customization
                 fig_1.update_layout(
-                    title='Real and forcasted prices',
+                    title='Real and forecasted prices',
                     xaxis_title='Date',
                     yaxis_title='Values',
                     xaxis=dict(range=[x_min, x_max]),  

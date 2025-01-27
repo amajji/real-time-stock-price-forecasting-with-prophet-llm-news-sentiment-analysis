@@ -1,4 +1,3 @@
-# Real-Time Price Forecasting and News Sentiment Analysis Dashboard
 # Development of a real time price forecasting dashboard using Prophet and news sentiment analysis with LLM
 Data scientist | [Anass MAJJI](https://www.linkedin.com/in/anass-majji-729773157/)
 ***
@@ -39,6 +38,7 @@ streamlit run app.py
 
 ## :fire: Demo of the Dashboard
 
+![](static/dashboard-demo.gif)
 
 ## Contributing 🤝
 
