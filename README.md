@@ -13,7 +13,7 @@ Data scientist | [Anass MAJJI](https://www.linkedin.com/in/anass-majji-729773157
 
 The data for both historical and real time prices is fetched using the YFinance and NewsApi API.
 
-## Getting Started 🚀
+## 🚀 Getting Started 
 1. Clone the repository
 ```bash
 git clone https://github.com/your-username/stock-price-forecasting-sentiment-analysis.git
