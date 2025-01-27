@@ -55,20 +55,6 @@ from models.prophet_model import prophet_model
 ################################################################################################################
 
 
-
-# # Load the pre-trained DistilBERT model for sentiment analysis
-# sentiment_model = pipeline("sentiment-analysis", model="distilbert-base-uncased")
-
-# # Sample text for analysis
-# text = "Bitcoin is the future of finance!"
-
-# # Analyze sentiment of the text
-# result = sentiment_model(text)
-
-# # Output the result
-# print(f"Sentiment: {result[0]['label']} with confidence score: {result[0]['score']:.4f}")
-
-
 # Main streamlit page
 def main():
 
@@ -357,7 +343,7 @@ def main():
                 portfolio_placeholder.markdown(f"""
                 <div style="background-color: {portfolio_color}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 0 auto;">
                     <strong>Invested amount: $ {st.session_state.investment_amount:.2f}</strong><br>
-                    <strong>Purchaced price: $ {st.session_state.purchase_price:.2f}</strong><br>
+                    <strong>Purchace price: $ {st.session_state.purchase_price:.2f}</strong><br>
                     <strong>Number of stocks:  {st.session_state.nb_units:.2f}</strong><br>
                     <strong>New stock price: $ {st.session_state.new_stock_price:.2f}</strong><br>
                 </div>
