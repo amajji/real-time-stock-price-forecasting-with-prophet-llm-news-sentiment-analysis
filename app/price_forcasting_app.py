@@ -20,85 +20,199 @@
 ################################################################################################################
 #                                                  Packages                                                    #
 ################################################################################################################
-
-
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import streamlit as st
 from pmdarima import auto_arima
 import yfinance as yf
+import praw
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-import math
-from prophet import Prophet
-import joblib
 import plotly.graph_objects as go
 import pandas as pd
-import openpyxl
 import matplotlib.colors as mcolors
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.models import load_model
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.arima_model import arima_model
 from models.lstm_model import lstm_model
 from models.prophet_model import prophet_model
 
-
+import torch
+from datetime import datetime
 ################################################################################################################
 #                                                   Main code                                                  #
 ################################################################################################################
 
 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+
+def get_historical_news(current_date):
+    # Initialize Reddit API client with your credentials
+    reddit = praw.Reddit(
+        client_id='rVofejEZJ37RP4Ht0Di9dg',  
+        client_secret='KoytCCII7wPYlSY0Hf7jUpZ_yPn59g',  
+        user_agent='BTC News Scraper v1'  
+    )
+
+    # Define the date range (2020 to now)
+    start_date = datetime(2019, 1, 1)
+
+    # data news
+    data = []
+
+    # Subreddit for Bitcoin news
+    subreddit = reddit.subreddit('Bitcoin')
+
+    # Fetch posts in chunks (Reddit limits you to top, hot, or new posts)
+    for submission in subreddit.top(time_filter='all', limit=100000):  # Increase the limit as needed, based on rate limits
+        post_date = datetime.utcfromtimestamp(submission.created_utc)
+        if start_date <= post_date <= current_date:
+            data.append(
+                {"Title":submission.title,
+                "URL":submission.url,
+                #"Score":submission.score,
+                "Published":post_date,
+                        })
+            
+    # convert data to dataframe
+    df_news = pd.DataFrame(data)
+
+    # get only year-month-day format
+    df_news["Published"] = df_news["Published"].apply(lambda x: str(x).split(" ")[0].strip())
+
+    # set Published column as index
+    df_news.set_index('Published', inplace=True, drop=True)
+
+    return df_news
+
+
+
+def get_historical_prices(current_date):
+    # Fetch cryptocurrency data (e.g., Bitcoin)
+    btc_data = yf.download('BTC-USD', start='2019-01-01', end=current_date)
+
+    # Assume you have another dataset, such as S&P 500
+    sp500_data = yf.download('^GSPC', start='2019-01-01', end=current_date)
+
+
+    # Get only level 0 columns
+    btc_data.columns = btc_data.columns.levels[0]
+    sp500_data.columns = sp500_data.columns.levels[0]
+
+    # merge both btc and sp500 dataframes
+    btc_sp500_data  = pd.merge(btc_data, sp500_data, left_index = True, right_index = True, suffixes=('_BTC', '_S&P500'))
+
+    # convert datetime format to string
+    btc_sp500_data.index = btc_sp500_data.index.strftime('%Y-%m-%d')
+
+    return btc_sp500_data
+
+
+def load_model():
+
+    # Load model and tokenizer
+    model_name = "cardiffnlp/twitter-roberta-base-sentiment"  # You can change this to any 3-class sentiment model
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+    return model, tokenizer
+
+def sentiment_classification(text):
+    if pd.isna(text):
+        return 0
+    
+    # Tokenize the input text
+    inputs = st.session_state.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+
+    # Get model predictions
+    with torch.no_grad():
+        outputs = st.session_state.model(**inputs)
+        logits = outputs.logits
+    
+    # Apply softmax to get probabilities for each class
+    probabilities = torch.nn.functional.softmax(logits, dim=-1)
+
+    finale_probability = probabilities[0][2].item() - probabilities[0][0].item()
+
+    # finale_probability is in the range [-1, +1] 
+    return finale_probability
+
+
+
+
+
+
+
+
 # Main streamlit page
 def main():
-
     # Set layout as wide
     st.set_page_config(layout="wide")
     
     # Define the title
     st.title("✨ Stock Price forecasting Dashboard")
 
-    # Fetch cryptocurrency data (e.g., Bitcoin)
-    btc_data = yf.download('BTC-USD', start='2019-01-01', end='2025-01-01')
 
-    # Assume you have another dataset, such as S&P 500
-    #sp500_data = yf.download('^GSPC', start='2019-01-01', end='2025-01-01')
+    # get current date
+    current_date = datetime.now()
 
-    # Get only level 0 columns
-    btc_data.columns = btc_data.columns.levels[0]
-    #sp500_data.columns = sp500_data.columns.levels[0]
+    if 'model' not in st.session_state or 'tokenizer' not in st.session_state:
+        st.session_state.model, st.session_state.tokenizer =  load_model()
+        
 
-    # Merge sp500_data with btc_data
-    #merged_data  = pd.merge(btc_data, sp500_data, left_index = True, right_index = True, suffixes=('_BTC', '_S&P500'))
-    merged_data = btc_data
+    if 'df_news' not in st.session_state:
+        # get df_news
+        st.session_state.df_news = get_historical_news(current_date)
 
-    # Reset index of train data
-    merged_data = merged_data.reset_index()
+    if 'btc_sp500_data' not in st.session_state:
+        # get btc and sp500 prices
+        st.session_state.btc_sp500_data = get_historical_prices(current_date)
 
-    # For prediction, we will only keep BTC and S&P 500 closing prices
-    #merged_data = merged_data[["Date", "Close_BTC", "Close_S&P500"]]
-    merged_data = merged_data[["Date", "Close"]]
+    if 'merged_data' not in st.session_state:
+        # merge both btc, sp500 features and news
+        st.session_state.merged_data  = pd.merge(st.session_state.btc_sp500_data, st.session_state.df_news, left_index = True, right_index = True, how = "left")
 
-    # Calculate moving averages
-    merged_data['SMA_50'] = merged_data['Close'].rolling(window=50).mean()
-    merged_data['EMA_50'] = merged_data['Close'].ewm(span=50, adjust=False).mean()
+        # analyse news: negative, positive, neutral and empty
+        st.session_state.merged_data["news_analysis"] = st.session_state.merged_data["Title"].apply(lambda x: sentiment_classification(x))
 
-    # Define target and date features
-    target = "Close"
-    date = "Date"
+        # Calculate moving averages
+        st.session_state.merged_data['SMA_50'] = st.session_state.merged_data['Close_BTC'].rolling(window=50).mean()
+        st.session_state.merged_data['EMA_50'] = st.session_state.merged_data['Close_BTC'].ewm(span=50, adjust=False).mean()
+
+        # reset index
+        st.session_state.merged_data.reset_index(inplace=True)
+
+        # convert Date column from str to date
+        st.session_state.merged_data['Date'] = st.session_state.merged_data['Date'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
+
+        # select only date, BTC close price, S&P500 close price and the output of the news analysis function
+        st.session_state.merged_data = st.session_state.merged_data[["Date", "Close_BTC", "Close_S&P500", "SMA_50", "EMA_50", "news_analysis"]]
+
+        
+        # Define target and date features
+        target = "Close_BTC"
+        date = "Date"
+
+        # Rename columns columns
+        st.session_state.merged_data.rename(columns={date:'ds', target:'y'}, inplace = True)
+
+
+        print("columns --- : ", st.session_state.merged_data.columns)
+
+
+
+
+
 
     # Define x_min, x_max, y_min and y_max
-    x_min, x_max, y_min, y_max = merged_data[date].min(), merged_data[date].max(), merged_data[target].min(), merged_data[target].max()
-    
-
-    # Rename columns columns
-    merged_data.rename(columns={date:'ds', target:'y'}, inplace = True)
+    x_min, x_max, y_min, y_max = st.session_state.merged_data['ds'].min(), st.session_state.merged_data['ds'].max(), st.session_state.merged_data['y'].min(), st.session_state.merged_data['y'].max()
+    #print(f"done ...{st.session_state.merged_data[date].max()}")
 
 
     # Initialize a global variable in session_state
@@ -185,17 +299,17 @@ def main():
             # Create date input widgets for start date selection
             start_date = st.date_input(
                 'Select start date', 
-                min_value=merged_data['ds'].min(), 
-                max_value=merged_data['ds'].max(), 
-                value=merged_data['ds'].min())
+                min_value=st.session_state.merged_data['ds'].min(), 
+                max_value=st.session_state.merged_data['ds'].max(), 
+                value=st.session_state.merged_data['ds'].min())
         
         with col14:
             # Create date input widgets for end date selection
             end_date = st.date_input(
                 'Select end date', 
-                min_value=merged_data['ds'].min(), 
-                max_value=merged_data['ds'].max(), 
-                value=merged_data['ds'].max())
+                min_value=st.session_state.merged_data['ds'].min(), 
+                max_value=st.session_state.merged_data['ds'].max(), 
+                value=st.session_state.merged_data['ds'].max())
 
     with col12:
         # Create a container for models performance
@@ -230,7 +344,7 @@ def main():
                 st.session_state.invested = True
 
     # Filter on dates between start_date and end_date
-    merged_data = merged_data.query(f"@start_date<=ds and ds<=@end_date")
+    st.session_state.merged_data = st.session_state.merged_data.query(f"@start_date<=ds and ds<=@end_date")
 
     # Initialize PNL and ROI with 0
     pnl, roi = 0, 0 
@@ -248,9 +362,9 @@ def main():
     if model_arima or model_lstm or model_prophet:
         # Spinner for long operations
         with st.spinner('Processing...'):
-            for train_size in range(10, len(merged_data), 30):
+            for train_size in range(10, len(st.session_state.merged_data), 30):
                 # Define train and test datasets
-                data_train, data_test = merged_data[:train_size], merged_data[train_size:] 
+                data_train, data_test = st.session_state.merged_data[:train_size], st.session_state.merged_data[train_size:] 
                 
                 # If ARIMA was selected
                 if model_arima:
