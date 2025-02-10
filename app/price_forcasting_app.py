@@ -212,7 +212,6 @@ def main():
 
     # Define x_min, x_max, y_min and y_max
     x_min, x_max, y_min, y_max = st.session_state.merged_data['ds'].min(), st.session_state.merged_data['ds'].max(), st.session_state.merged_data['y'].min(), st.session_state.merged_data['y'].max()
-    #print(f"done ...{st.session_state.merged_data[date].max()}")
 
 
     # Initialize a global variable in session_state
