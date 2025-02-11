@@ -40,10 +40,12 @@ import matplotlib.colors as mcolors
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.arima_model import arima_model
 from models.lstm_model import lstm_model
-from models.prophet_model import prophet_model
-
+from models.prophet_model import train_prophet_model
+import mlflow
 import torch
 from datetime import datetime
+import joblib
+
 ################################################################################################################
 #                                                   Main code                                                  #
 ################################################################################################################
@@ -51,6 +53,9 @@ from datetime import datetime
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
+
+mlflow.set_tracking_uri("http://127.0.0.1:5000/")
+mlflow.set_experiment("prophet-model")
 
 def get_historical_news(current_date):
     # Initialize Reddit API client with your credentials
@@ -114,7 +119,7 @@ def get_historical_prices(current_date):
     return btc_sp500_data
 
 
-def load_model():
+def load_roberta_model():
 
     # Load model and tokenizer
     model_name = "cardiffnlp/twitter-roberta-base-sentiment"  # You can change this to any 3-class sentiment model
@@ -122,6 +127,14 @@ def load_model():
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
     return model, tokenizer
+
+
+def load_prophet_model():
+    # Load the model with joblib
+    loaded_model = joblib.load('weights/prophet_model.joblib')
+
+    return loaded_model
+
 
 def sentiment_classification(text):
     if pd.isna(text):
@@ -148,8 +161,6 @@ def sentiment_classification(text):
 
 
 
-
-
 # Main streamlit page
 def main():
     # Set layout as wide
@@ -163,8 +174,10 @@ def main():
     current_date = datetime.now()
 
     if 'model' not in st.session_state or 'tokenizer' not in st.session_state:
-        st.session_state.model, st.session_state.tokenizer =  load_model()
-        
+        st.session_state.model, st.session_state.tokenizer =  load_roberta_model()
+
+    if 'prophet' not in st.session_state:
+        st.session_state.prophet_model=load_prophet_model()      
 
     if 'df_news' not in st.session_state:
         # get df_news
@@ -377,8 +390,21 @@ def main():
 
                 # if PROPHET was selected
                 if model_prophet:
-                    # Get forecasted values using PROPHET model
-                    data_train, data_test, forecasted_values = prophet_model(data_train, data_test, 'ds', 'y', retrain=False)
+                    # Predict future values
+                    forecast = st.session_state.prophet_model.predict(data_test[['ds']])
+
+                    # Extract the forecasted values and dates
+                    forecasted_values = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+
+                    if mean_squared_error(data_test['y'], forecasted_values['yhat']) > 1000:
+                        print('start retraining ... ')
+                        # retrain prophet model
+                        train_prophet_model(data_train, data_test, 'ds', 'y')
+
+                        # fetch the last version of the model
+                        model_uri = "models:/prophet_model/latest"  
+                        st.session_state.prophet_model = mlflow.prophet.load_model(model_uri)
+                        print('last prophet model is fetched ... ')
 
                 # current price 
                 current_price = data_test['y'].iloc[0]

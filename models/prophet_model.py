@@ -1,16 +1,40 @@
 from prophet import Prophet
-import joblib
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import mlflow
+import datetime
+ 
+
+def accuracy_measures(y_test,predictions,avg_method):
+    # Regression Metrics
+    mae = mean_absolute_error(y_test, predictions)
+    mse = mean_squared_error(y_test, predictions)
+    r2 = r2_score(y_test, predictions)
+
+    print("Regression Metrics")
+    print("--------------------")
+    print(f"MAE: {mae}")
+    print(f"MSE: {mse}")
+    print(f"R2 Score: {r2}")
+
+    return mae, mse, r2
 
 
 
-def prophet_model(data_train, data_test, date, target, retrain=True):
-    if retrain:
+def train_prophet_model(data_train, data_test, date, target):
+    runname = "prophet-run-" + str(datetime.datetime.now()).replace(" ","T")
+    with mlflow.start_run(run_name=runname) as prophet_run:
+
+        changepoint_prior_scale=0.1
+        changepoint_range=0.2
+        interval_width=0.3
+        uncertainty_samples=1000
+
         # Initialize the Prophet model
         prophet_model = Prophet(
-            changepoint_prior_scale=0.1,  # Allow for more rapid trend changes
-            changepoint_range=0.2,  # Use the first 90% of the data for changepoints
-            interval_width=0.3,  # 95% confidence intervals
-            uncertainty_samples=1000  # Number of uncertainty simulations
+            changepoint_prior_scale=changepoint_prior_scale,  # Allow for more rapid trend changes
+            changepoint_range=changepoint_range,  # Use the first 90% of the data for changepoints
+            interval_width=interval_width,  # 95% confidence intervals
+            uncertainty_samples=uncertainty_samples  # Number of uncertainty simulations
         )
 
         # Add the S&P500 data as an additional regressor to improve predictions
@@ -19,17 +43,26 @@ def prophet_model(data_train, data_test, date, target, retrain=True):
         # Fit the model on the merged data
         prophet_model.fit(data_train[[date, target]])
 
-        # Save the model with joblib
-        joblib.dump(prophet_model, 'weights/prophet_model.joblib')
+        # Forecast future prices
+        forecast = prophet_model.predict(data_test[[date]])
 
-    # Load the model with joblib
-    loaded_model = joblib.load('weights/prophet_model.joblib')
+        mae, mse, r2 = accuracy_measures(data_test[target],forecast["yhat"],'weighted')
 
-    # Predict future values
-    #forecast = prophet_model.predict(data_test[['ds', 'Close_S&P500']])
-    forecast = loaded_model.predict(data_test[[date]])
 
-    # Extract the forecasted values and dates
-    forecasted_values = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+        # Log hyperparameters
+        mlflow.log_param("changepoint_prior_scale", changepoint_prior_scale)
+        mlflow.log_param("changepoint_range", changepoint_range)
+        mlflow.log_param("interval_width", interval_width)
+        mlflow.log_param("uncertainty_samples", uncertainty_samples)
 
-    return data_train, data_test, forecasted_values
+        # Log metrics
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("mse", mse)
+        mlflow.log_metric("r2_score", r2)
+
+        # Log the trained model
+        mlflow.prophet.log_model(prophet_model, "prophet_model")
+
+
+
+
