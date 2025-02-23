@@ -1,13 +1,15 @@
-# Ignore virtual environment folder
+# Ignore virtual environment and folders
 cryptovenv/
 df_predictions.xlsx
 data/
 mlruns/
 mlartifacts/
 dvc_storage/
+app/Crypto-price-forcasting.ipynb
 
 # Ignore Python bytecode files
 *.pyc
+*.egg-info/
 
 # Ignore IDE config
 .vscode/
@@ -15,3 +17,6 @@ dvc_storage/
 
 # Ignore log files
 *.log
+
+# Ignore dvc files
+*.dvc
