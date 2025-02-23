@@ -3,8 +3,7 @@
 
 # Ignore the virtual environment folder
 cryptovenv/
-mlruns/
-mlartifacts/
+
 
 # Ignore Python bytecode files
 *.pyc
