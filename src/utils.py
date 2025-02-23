@@ -6,18 +6,18 @@ import logging
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import subprocess
+import os
 
 
 # API constants for fetching data
-CLIENT_ID = "rVofejEZJ37RP4Ht0Di9dg"
-CLIENT_SECRET = "KoytCCII7wPYlSY0Hf7jUpZ_yPn59g"
+CLIENT_ID = os.getenv('CLIENT_ID')
+CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 
 
 
 def get_historical_news(current_date):
     """
     Fetches historical Reddit posts within a given date range and returns them as a pandas DataFrame.
-
     Parameters:
         current_date (datetime): The current date for filtering the news.
 
@@ -73,7 +73,6 @@ def get_historical_news(current_date):
 def get_historical_prices(current_date):
     """
     Fetches historical prices for Bitcoin and S&P 500 and returns them in a merged DataFrame.
-
     Parameters:
         current_date (str): The end date for fetching the data.
 
@@ -115,7 +114,6 @@ def save_to_dvc(list_paths):
     # save the file using DVC
     for file_path in list_paths:
         try:
-
             # Use DVC Python API to add file
             subprocess.run(['dvc', 'add', file_path], check=True)
             
@@ -124,7 +122,6 @@ def save_to_dvc(list_paths):
             
             # Commit the changes to Git with a dynamic commit message
             subprocess.run(['git', 'commit', '-m', f'Add {file_path}.dvc to DVC'], check=True)
-
 
         except subprocess.CalledProcessError as e:
                 logging.error(f"Error in DVC or Git command: {e}")

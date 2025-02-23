@@ -25,6 +25,8 @@ services:
     ports:
       - "8501:8501"
     environment:
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
       - MLFLOW_TRACKING_URI=http://mlflow:5000  # Point Streamlit to the MLflow server
     depends_on:
       - mlflow  # Ensure that MLflow service is started before Streamlit
