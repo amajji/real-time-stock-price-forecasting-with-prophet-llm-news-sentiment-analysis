@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  mlflow:
+    image: ubuntu/mlflow:2.1.1_1.0-22.04
+    container_name: mlflow-container
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Set the tracking URI for MLflow
+    volumes:
+      - mlflow-data:/mlflow  # Mount volume to persist MLflow data
+    command: mlflow server --host 0.0.0.0 --port 5000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
+
+  streamlit:
+    build: 
+      context: .  # Build the Streamlit app from the Dockerfile
+    container_name: streamlit-container
+    ports:
+      - "8501:8501"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000  # Point Streamlit to the MLflow server
+    depends_on:
+      - mlflow  # Ensure that MLflow service is started before Streamlit
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
+
+  prometheus:
+    image: prom/prometheus:v2.37.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus  # Persist Prometheus data
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - streamlit  # Ensure that Streamlit service is started before Prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
+
+  grafana:
+    image: grafana/grafana:8.4.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Set Grafana password here
+    depends_on:
+      - prometheus  # Ensure Prometheus is ready before Grafana
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
+
+volumes:
+  mlflow-data:
+    driver: local
+  prometheus-data:
+    driver: local
