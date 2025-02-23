@@ -8,6 +8,7 @@ __pycache__/
 
 # Ignore virtual environment
 cryptovenv/
+df_predictions.xlsx
 mlruns/
 mlartifacts/
 

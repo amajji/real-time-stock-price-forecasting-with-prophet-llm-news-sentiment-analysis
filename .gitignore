@@ -1,7 +1,10 @@
 # Ignore virtual environment folder
 cryptovenv/
+df_predictions.xlsx
+data/
 mlruns/
 mlartifacts/
+dvc_storage/
 
 # Ignore Python bytecode files
 *.pyc
