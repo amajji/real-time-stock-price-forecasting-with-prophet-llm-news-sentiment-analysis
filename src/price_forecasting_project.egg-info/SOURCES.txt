@@ -1,6 +1,0 @@
-README.md
-setup.py
-src/price_forecasting_project.egg-info/PKG-INFO
-src/price_forecasting_project.egg-info/SOURCES.txt
-src/price_forecasting_project.egg-info/dependency_links.txt
-src/price_forecasting_project.egg-info/top_level.txt
