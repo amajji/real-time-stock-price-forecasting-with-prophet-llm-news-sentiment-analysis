@@ -24,254 +24,32 @@ import sys
 import os
 import streamlit as st
 from pmdarima import auto_arima
-import yfinance as yf
-import praw
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
-from sklearn.preprocessing import MinMaxScaler
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import numpy as np
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import plotly.graph_objects as go
-import pandas as pd
-import matplotlib.colors as mcolors
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.arima_model import arima_model
-from models.lstm_model import lstm_model
-from models.prophet_model import train_prophet_model
 import mlflow
-import torch
 from datetime import datetime
 import time
-import joblib
-import logging
-from prometheus_client import start_http_server, Gauge, Counter, Histogram, REGISTRY
-from streamlit_extras import prometheus
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from src.prometheus_metrics import PrometheusMetrics
+from src.sentiment_analysis import SentimentAnalysis
+from src.data_preprocessing import DataPreprocessing
+from src.model_training import ModelTraining
+from src.visualization import Visualization
+from src.investment_tracker import InvestmentTracker
+from src.arima_lstm_models import arima_model, lstm_model
 ################################################################################################################
 #                                                   Main code                                                  #
 ################################################################################################################
 
+# Disable OneDNN optimizations for TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 # Set the URI for the MLflow tracking server
-#mlflow.set_tracking_uri("http://127.0.0.1:5000/")
-mlflow.set_tracking_uri("http://mlflow:5000")
+mlflow.set_tracking_uri("http://127.0.0.1:5000/")
+#mlflow.set_tracking_uri("http://mlflow:5000")
 
 # Set the experiment name for MLflow 
 mlflow.set_experiment("mlflow-prophet-model")
-
-
-# Define the Prometheus metrics
-if 'app_error_count' not in st.session_state:
-    st.session_state.app_error_count = Counter(name='app_exception_count', documentation='Number of application errors', registry=prometheus.streamlit_registry())
-
-if 'prophet_model_retrain_count' not in st.session_state:
-    st.session_state.prophet_model_retrain_count = Counter(name='prophet_model_retrain_count', documentation='Number of retrains of Prophet model', registry=prometheus.streamlit_registry())
-
-if 'prophet_model_training_duration' not in st.session_state:
-    st.session_state.prophet_model_training_duration = Histogram(name='prophet_model_training_duration_seconds', documentation='Time taken for Prophet model training', registry=prometheus.streamlit_registry())
-
-if 'request_duration' not in st.session_state:
-    st.session_state.request_duration = Histogram(name='request_duration_seconds', documentation='Time taken for request processing', registry=prometheus.streamlit_registry())
-
-if 'model_error_rate' not in st.session_state:
-    st.session_state.model_error_rate = Gauge(name='model_error_rate', documentation='Error rate of the model predictions', registry=prometheus.streamlit_registry())
-
-
-# Start the HTTP server to expose metrics to Prometheus
-#start_http_server(8002)
-
-def get_historical_news(current_date):
-    """
-    Fetches historical Reddit posts within a given date range and returns them as a pandas DataFrame.
-
-    Parameters:
-        current_date (datetime): The current date for filtering the news.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the news data.
-    """
-    try :
-        # Initialize Reddit API client with your credentials
-        reddit = praw.Reddit(
-            client_id='rVofejEZJ37RP4Ht0Di9dg',  
-            client_secret='KoytCCII7wPYlSY0Hf7jUpZ_yPn59g',  
-            user_agent='BTC News Scraper v1'  
-        )
-
-        # Define the date range (2020 to now)
-        start_date = datetime(2019, 1, 1)
-
-        # data news
-        data = []
-
-        # Subreddit for Bitcoin news
-        subreddit = reddit.subreddit('Bitcoin')
-
-        # Fetch posts in chunks
-        for submission in subreddit.top(time_filter='all', limit=100000):  
-            post_date = datetime.utcfromtimestamp(submission.created_utc)
-            if start_date <= post_date <= current_date:
-                data.append(
-                    {"Title":submission.title,
-                    "URL":submission.url,
-                    #"Score":submission.score,
-                    "Published":post_date,
-                            })
-                
-        # convert data to dataframe 
-        df_news = pd.DataFrame(data)
-
-        # get only year-month-day format
-        df_news["Published"] = df_news["Published"].apply(lambda x: str(x).split(" ")[0].strip())
-
-        # set Published column as index
-        df_news.set_index('Published', inplace=True, drop=True)
-
-        return df_news
-    
-    except Exception as e:
-        logging.error(f"Error in get_historical_news: {e}")
-        st.session_state.app_error_count.inc() 
-        return None 
-
-
-
-def get_historical_prices(current_date):
-    """
-    Fetches historical prices for Bitcoin and S&P 500 and returns them in a merged DataFrame.
-
-    Parameters:
-        current_date (str): The end date for fetching the data.
-
-    Returns:
-        pd.DataFrame: Merged DataFrame with Bitcoin and S&P 500 prices.
-    """
-    try:
-        # Fetch cryptocurrency data (e.g., Bitcoin)
-        btc_data = yf.download('BTC-USD', start='2019-01-01', end=current_date)
-
-        # Assume you have another dataset, such as S&P 500
-        sp500_data = yf.download('^GSPC', start='2019-01-01', end=current_date)
-
-        # Get only level 0 columns
-        btc_data.columns = btc_data.columns.levels[0]
-        sp500_data.columns = sp500_data.columns.levels[0]
-
-        # merge both btc and sp500 dataframes
-        btc_sp500_data  = pd.merge(btc_data, sp500_data, left_index = True, right_index = True, suffixes=('_BTC', '_S&P500'))
-
-        # convert datetime format to string
-        btc_sp500_data.index = btc_sp500_data.index.strftime('%Y-%m-%d')
-
-        return btc_sp500_data
-    
-    except Exception as e:
-        logging.error(f"Error in get_historical_prices: {e}")
-        st.session_state.app_error_count.inc() 
-        return None 
-    
-
-def load_roberta_model():
-    """
-    Loads the RoBERTa model for sentiment classification.
-    """
-    try:
-        # Load model and tokenizer
-        model_name = "cardiffnlp/twitter-roberta-base-sentiment"  # You can change this to any 3-class sentiment model
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        return model, tokenizer
-        
-    except Exception as e:
-        logging.error(f"Error loading model {model_name}: {e}")
-        st.session_state.app_error_count.inc() 
-        return None 
-
-
-def sentiment_classification(text):
-    """
-    Classifies sentiment of the input text.
-
-    Parameters:
-        text (str): The text to classify.
-
-    """
-    try:
-        if pd.isna(text):
-            return 0
-        
-        # Tokenize the input text
-        inputs = st.session_state.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-
-        # Get model predictions
-        with torch.no_grad():
-            outputs = st.session_state.model(**inputs)
-            logits = outputs.logits
-        
-        # Apply softmax to get probabilities for each class
-        probabilities = torch.nn.functional.softmax(logits, dim=-1)
-        finale_probability = probabilities[0][2].item() - probabilities[0][0].item()
-
-        # finale_probability is in the range [-1, +1] 
-        return finale_probability
-    
-    except Exception as e:
-        logging.error(f"Error in sentiment_classification: {e}")
-        st.session_state.app_error_count.inc() 
-        return None 
-
-
-def retrain_load_prophet(data_train, data_test, train_size):
-    """
-    Retrains the Prophet model and loads the latest run.
-
-    Parameters:
-        data_train (DataFrame): The training data.
-        data_test (DataFrame): The testing data.
-        train_size (float): The train-test split ratio.
-
-    Returns:
-        Loaded Prophet model.
-    """
-    start_time = time.time()
-    logging.info('start retraining ... ')
-
-    try:
-        # retrain prophet model
-        train_prophet_model(data_train, data_test, train_size, 'ds', 'y')
-
-        # Time taken for Prophet model training
-        st.session_state.prophet_model_training_duration.observe(time.time() - start_time)
-        logging.info('end retraining ... ')
-
-        # Increment prophet model retraining counter
-        st.session_state.prophet_model_retrain_count.inc() 
-
-        # Retrieve the latest run
-        runs = mlflow.search_runs(order_by=["start_time desc"])
-
-        # Check if any runs were found
-        if not runs.empty:
-            logging.info("runs found ... ")
-            # Get the most recent run
-            latest_run = runs.iloc[0]  
-            run_id = latest_run.run_id
-            logging.info('last prophet model is fetched ... ')
-
-            # Load the model from the most recent run
-            model_uri = f"runs:/{run_id}/prophet_model"
-            return mlflow.pyfunc.load_model(model_uri)
-
-    except Exception as e:
-        logging.error(f"Error in retraining Prophet model: {e}")
-        st.session_state.app_error_count.inc()
-        return None
-        
-
-
 
 
 # Main streamlit page
@@ -285,79 +63,46 @@ def main():
     # get current date
     current_date = datetime.now()
 
+    # date feature
+    date = "Date"
+
+    # Initialize Prometheus metrics
+    prometheus_metrics_inc = PrometheusMetrics()
+
+    # Create an instance of SentimentAnalysis
+    sentiment_analyzer_inc = SentimentAnalysis()
+
+    # Create an instance of Visualization
+    visualization_inc = Visualization()
+
+    # Instantiate the DataPreprocessing class
+    data_preprocessor_inc = DataPreprocessing(current_date=current_date, sentiment_analyzer=sentiment_analyzer_inc)
+
+    # Instanciate the investment tracker class
+    investment_tracker_inc = InvestmentTracker(date=date)
+
     if 'model' not in st.session_state or 'tokenizer' not in st.session_state:
-        st.session_state.model, st.session_state.tokenizer =  load_roberta_model()
+        st.session_state.model, st.session_state.tokenizer =  sentiment_analyzer_inc.load_roberta_model()
 
     if 'prophet' not in st.session_state:
             st.session_state.prophet_model = None
 
-    if 'df_news' not in st.session_state:
-        # get df_news
-        st.session_state.df_news = get_historical_news(current_date)
 
-    if 'btc_sp500_data' not in st.session_state:
-        # get btc and sp500 prices
-        st.session_state.btc_sp500_data = get_historical_prices(current_date)
+    if 'merged_data' not in st.session_state:        
+        # Load data (both price and news)
+        data_preprocessor_inc.load_data()
 
-    if 'merged_data' not in st.session_state:
-        # merge both btc, sp500 features and news
-        st.session_state.merged_data  = pd.merge(st.session_state.btc_sp500_data, st.session_state.df_news, left_index = True, right_index = True, how = "left")
+        # Merge data (BTC prices with news data)
+        data_preprocessor_inc.merge_data()
 
-        # analyse news: negative, positive, neutral and empty
-        st.session_state.merged_data["news_analysis"] = st.session_state.merged_data["Title"].apply(lambda x: sentiment_classification(x))
+        # Process the data
+        data_preprocessor_inc.processing_data()
 
-        # Calculate moving averages
-        st.session_state.merged_data['SMA_50'] = st.session_state.merged_data['Close_BTC'].rolling(window=50).mean()
-        st.session_state.merged_data['EMA_50'] = st.session_state.merged_data['Close_BTC'].ewm(span=50, adjust=False).mean()
-
-        # reset index
-        st.session_state.merged_data.reset_index(inplace=True)
-
-        # convert Date column from str to date
-        st.session_state.merged_data['Date'] = st.session_state.merged_data['Date'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
-
-        # select only date, BTC close price, S&P500 close price and the output of the news analysis function
-        st.session_state.merged_data = st.session_state.merged_data[["Date", "Close_BTC", "Close_S&P500", "SMA_50", "EMA_50", "news_analysis"]]
-
-        
-        # Define target and date features
-        target = "Close_BTC"
-        date = "Date"
-
-        # Rename columns columns
-        st.session_state.merged_data.rename(columns={date:'ds', target:'y'}, inplace = True)
-        logging.info("columns --- : ", st.session_state.merged_data.columns)
-        logging.info("Shape --- : ", st.session_state.merged_data.shape)
-
+        # save merged_data 
+        st.session_state.merged_data = data_preprocessor_inc.df_merged_data
 
     # Define x_min, x_max, y_min and y_max
     x_min, x_max, y_min, y_max = st.session_state.merged_data['ds'].min(), st.session_state.merged_data['ds'].max(), st.session_state.merged_data['y'].min(), st.session_state.merged_data['y'].max()
-
-
-    # Initialize a global variable in session_state
-    if 'new_invested_amount' not in st.session_state:
-        # Initialize new invested amount with 0 
-        st.session_state.new_invested_amount = 0  
-
-    if 'investment_amount' not in st.session_state:
-        # Initialize total invested amount with 0 
-        st.session_state.investment_amount = 0   
-
-    if 'nb_units' not in st.session_state:
-        # Initialise number of stocks with 0 
-        st.session_state.nb_units = 0
-
-    if 'new_stock_price' not in st.session_state:
-        # Initialise new stock price with 0 
-        st.session_state.new_stock_price = 0
-
-    if 'purchase_price' not in st.session_state:
-        # Initialise purchase price with 0 
-        st.session_state.purchase_price = 0
-
-    if 'df_predictions' not in st.session_state:
-        # Initialise df_predictions to store predictions
-        st.session_state.df_predictions = pd.DataFrame(columns = [date, "y_true", "y_pred"])
 
     # Define 5 columns 
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -443,16 +188,7 @@ def main():
             
         with col16:
             # CSS code for Buy button
-            st.markdown("""
-                <style>
-                    .stButton > button {
-                        display: block;
-                        margin-left: auto;
-                        margin-right: auto;
-                        width: 80%;  /* You can adjust the width as needed */
-                    }
-                </style>
-            """, unsafe_allow_html=True)
+            st.markdown(visualization_inc.plot_buy_button(), unsafe_allow_html=True)
 
             # Session state to store whether the button was pressed
             if 'invested' not in st.session_state:
@@ -503,12 +239,15 @@ def main():
                 # if PROPHET was selected
                 if model_prophet:
 
+                    # Create an instance of ModelTraining
+                    model_training = ModelTraining()
+
                     # Retrieve the latest run
                     runs = mlflow.search_runs(order_by=["start_time desc"])
 
                     # train the model for the first time 
-                    if not st.session_state.prophet_model:
-                        st.session_state.prophet_model = retrain_load_prophet(data_train, data_test, train_size)
+                    if not st.session_state.prophet_model: 
+                        st.session_state.prophet_model = model_training.retrain_load_prophet(data_train, data_test, train_size)
 
                     # start time
                     start_time = time.time()
@@ -529,11 +268,10 @@ def main():
                         if compt < 4:
                             compt += 1
                             if mean_squared_error(st.session_state.df_predictions["y_true"][-nb_days:],  st.session_state.df_predictions["y_pred"][-nb_days:]) > 1000:
-                                st.session_state.prophet_model = retrain_load_prophet(data_train, data_test, train_size)
+                                st.session_state.prophet_model = model_training.retrain_load_prophet(data_train, data_test, train_size)
                                 st.session_state.model_error_rate.set(0)
                             else:
                                 st.session_state.model_error_rate.set(1)
-
 
                 # current price 
                 current_price = data_test['y'].iloc[0]
@@ -552,15 +290,8 @@ def main():
                     # Calculate MAE
                     model_error = mean_absolute_error(data_test['y'], forecasted_values['yhat'])
 
-                    # Show Current price in colored cell
-                    error_placeholder.markdown(f"""
-                    <div style="background-color: {"#8B0000"}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 1% auto;">
-                        <strong></strong><br>
-                        <strong></strong> Mean Absolute Error (MAE) of the model in $:<br>
-                        <strong>{model_error:.2f}</strong><br>
-                        <strong></strong><br>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    # Show model's error in colored cell
+                    error_placeholder.markdown(visualization_inc.plot_model_mae(model_error), unsafe_allow_html=True)
 
                     # Define the color depending on the variation between old and new stock price
                     if current_price >= old_value:
@@ -581,11 +312,7 @@ def main():
                 # Update values when Buy button is pressed
                 if st.session_state.invested:
                     bool_press = True
-                    st.session_state.purchase_price = data_train['y'].iloc[-1]
-                    st.session_state.nb_units += st.session_state.new_invested_amount/st.session_state.purchase_price
-                    st.session_state.new_stock_price = st.session_state.investment_amount/st.session_state.nb_units 
-                    st.session_state.invested = False
-                    
+                    investment_tracker_inc.update_investment(data_train)
                     
                 # Compte PNL and ROI
                 if bool_press: 
@@ -601,48 +328,16 @@ def main():
                     color_pnl = 'red'
 
                 # Show Current price in colored cell
-                price_placeholder.markdown(f"""
-                <div style="background-color: {color_price}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 1% auto;">
-                    <strong>Current price: $ {current_price:.2f}</strong><br>
-                </div>
-                """, unsafe_allow_html=True)
+                price_placeholder.markdown(visualization_inc.plot_current_price(color_price, current_price), unsafe_allow_html=True)
 
                 # Show Portfolio details in colored cell
-                portfolio_placeholder.markdown(f"""
-                <div style="background-color: {portfolio_color}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 0 auto;">
-                    <strong>Invested amount: $ {st.session_state.investment_amount:.2f}</strong><br>
-                    <strong>Purchace price: $ {st.session_state.purchase_price:.2f}</strong><br>
-                    <strong>Number of stocks:  {st.session_state.nb_units:.2f}</strong><br>
-                    <strong>New stock price: $ {st.session_state.new_stock_price:.2f}</strong><br>
-                </div>
-                """, unsafe_allow_html=True)
+                portfolio_placeholder.markdown(visualization_inc.plot_portfolio_details(portfolio_color), unsafe_allow_html=True)
 
                 # Show P&L in colored cell
-                plot_model_perf.markdown(f"""
-                <div style="background-color: {color_pnl}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 0 auto;">
-                    <strong>ROI: {roi:.2f}%</strong><br>
-                    <strong>P&L: $ {pnl:.2f}</strong><br>
-                </div>
-                """, unsafe_allow_html=True)
-
+                plot_model_perf.markdown(visualization_inc.plot_pnl(pnl, roi), unsafe_allow_html=True)
 
                 # Figure to plot train, test and forecasted values 
-                fig = go.Figure()
-
-                # Add training data
-                fig.add_trace(go.Scatter(x=data_train['ds'], y=data_train['y'], mode='lines', name='Train Data'))
-
-                # Add simple moving average 
-                fig.add_trace(go.Scatter(x=data_train['ds'], y=data_train['SMA_50'], mode='lines', name='Simple moving average'))
-
-                # Add Exponential Moving Average
-                fig.add_trace(go.Scatter(x=data_train['ds'], y=data_train['EMA_50'], mode='lines', name='Exponential Moving Average'))
-
-                # Add test data
-                fig.add_trace(go.Scatter(x=data_test['ds'], y=data_test['y'], mode='lines', name='Test Data'))
-
-                # Add forecasted data
-                fig.add_trace(go.Scatter(x=forecasted_values['ds'], y=forecasted_values['yhat'], mode='lines', name='Forecasted Data'))
+                fig = visualization_inc.plot_forecast(data_train, data_test, forecasted_values)
 
                 # if PROPHET was selected
                 if model_prophet:
@@ -672,35 +367,16 @@ def main():
                     yaxis_title='Values',
                     xaxis=dict(range=[x_min, x_max]),  
                     yaxis=dict(range=[y_min, 1.5*y_max]), 
-                    #width=800,
-                    #height=800, 
                     template="plotly",
                 )
                 # Update the plot in Streamlit
                 plot_placeholder.plotly_chart(fig)
 
-
                 # Figure to plot true and predicted values
-                fig_1 = go.Figure()
-                
-                # Add training data
-                fig_1.add_trace(go.Scatter(x=dates, y=y_pred, mode='lines', name='Forecasted price'))
-                fig_1.add_trace(go.Scatter(x=dates, y=y_true, mode='lines', name='Real price'))
+                fig_1 = visualization_inc.plot_true_forecasted_values(dates, y_true, y_pred, x_min, x_max)
 
-                # Layout customization
-                fig_1.update_layout(
-                    title='Real and forecasted prices',
-                    xaxis_title='Date',
-                    yaxis_title='Values',
-                    xaxis=dict(range=[x_min, x_max]),  
-                    #yaxis=dict(range=[y_min, 1.5*y_max]), 
-                    #width=800,
-                    #height=800, 
-                    template="plotly",
-                )
                 # Update the plot in Streamlit
                 plot_perf_model.plotly_chart(fig_1)
-
 
                 # save date, true value and predicted value
                 st.session_state.df_predictions.loc[len(st.session_state.df_predictions)] = [data_train['ds'].iloc[-1], data_train['y'].iloc[-1], next_predicted_value]

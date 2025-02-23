@@ -1,0 +1,15 @@
+artifact_uri: mlflow-artifacts:/252911108173376035/0f00f1c877a448a0a2259869ce139de5/artifacts
+end_time: 1740334822117
+entry_point_name: ''
+experiment_id: '252911108173376035'
+lifecycle_stage: active
+run_id: 0f00f1c877a448a0a2259869ce139de5
+run_name: honorable-duck-328
+run_uuid: 0f00f1c877a448a0a2259869ce139de5
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1740334820956
+status: 3
+tags: []
+user_id: anass

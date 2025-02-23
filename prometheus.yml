@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'mlflow'
+    static_configs:
+      - targets: ['mlflow:5000']
+  
+  - job_name: 'streamlit'
+    static_configs:
+      - targets: ['streamlit:8501']
+    metrics_path: '/_stcore/metrics'
+  # # Add job for node_exporter to scrape system metrics
+  # - job_name: 'node_exporter'
+  #   static_configs:
+  #     - targets: ['node_exporter:9100']  # Scrape from node_exporter on port 9100  

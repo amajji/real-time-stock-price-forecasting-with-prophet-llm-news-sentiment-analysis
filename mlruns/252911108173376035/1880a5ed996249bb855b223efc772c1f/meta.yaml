@@ -1,0 +1,15 @@
+artifact_uri: mlflow-artifacts:/252911108173376035/1880a5ed996249bb855b223efc772c1f/artifacts
+end_time: 1740334817750
+entry_point_name: ''
+experiment_id: '252911108173376035'
+lifecycle_stage: active
+run_id: 1880a5ed996249bb855b223efc772c1f
+run_name: trusting-bird-889
+run_uuid: 1880a5ed996249bb855b223efc772c1f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1740334816252
+status: 3
+tags: []
+user_id: anass
