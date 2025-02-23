@@ -1,5 +1,0 @@
-[core]
-    remote = myremote
-    autostage = true
-['remote "myremote"']
-    url = C:/Users/anass/Documents/github/real-time-crypto-forcasting-with-arima-prophet-llm-news-sentiment/dvc_storage
