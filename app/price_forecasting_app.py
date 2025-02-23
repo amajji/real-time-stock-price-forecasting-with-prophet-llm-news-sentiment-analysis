@@ -17,7 +17,7 @@
 ################################################################################################################
 
 
-################################################################################################################
+####### #########################################################################################################
 #                                                  Packages                                                    #
 ################################################################################################################
 import sys
@@ -44,119 +44,232 @@ from models.prophet_model import train_prophet_model
 import mlflow
 import torch
 from datetime import datetime
+import time
 import joblib
-
+import logging
+from prometheus_client import start_http_server, Gauge, Counter, Histogram, REGISTRY
+from streamlit_extras import prometheus
 ################################################################################################################
 #                                                   Main code                                                  #
 ################################################################################################################
 
-
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
+# Set the URI for the MLflow tracking server
+#mlflow.set_tracking_uri("http://127.0.0.1:5000/")
+mlflow.set_tracking_uri("http://mlflow:5000")
 
-mlflow.set_tracking_uri("http://127.0.0.1:5000/")
-mlflow.set_experiment("prophet-model")
+# Set the experiment name for MLflow 
+mlflow.set_experiment("mlflow-prophet-model")
+
+
+# Define the Prometheus metrics
+if 'app_error_count' not in st.session_state:
+    st.session_state.app_error_count = Counter(name='app_exception_count', documentation='Number of application errors', registry=prometheus.streamlit_registry())
+
+if 'prophet_model_retrain_count' not in st.session_state:
+    st.session_state.prophet_model_retrain_count = Counter(name='prophet_model_retrain_count', documentation='Number of retrains of Prophet model', registry=prometheus.streamlit_registry())
+
+if 'prophet_model_training_duration' not in st.session_state:
+    st.session_state.prophet_model_training_duration = Histogram(name='prophet_model_training_duration_seconds', documentation='Time taken for Prophet model training', registry=prometheus.streamlit_registry())
+
+if 'request_duration' not in st.session_state:
+    st.session_state.request_duration = Histogram(name='request_duration_seconds', documentation='Time taken for request processing', registry=prometheus.streamlit_registry())
+
+if 'model_error_rate' not in st.session_state:
+    st.session_state.model_error_rate = Gauge(name='model_error_rate', documentation='Error rate of the model predictions', registry=prometheus.streamlit_registry())
+
+
+# Start the HTTP server to expose metrics to Prometheus
+#start_http_server(8002)
 
 def get_historical_news(current_date):
-    # Initialize Reddit API client with your credentials
-    reddit = praw.Reddit(
-        client_id='rVofejEZJ37RP4Ht0Di9dg',  
-        client_secret='KoytCCII7wPYlSY0Hf7jUpZ_yPn59g',  
-        user_agent='BTC News Scraper v1'  
-    )
+    """
+    Fetches historical Reddit posts within a given date range and returns them as a pandas DataFrame.
 
-    # Define the date range (2020 to now)
-    start_date = datetime(2019, 1, 1)
+    Parameters:
+        current_date (datetime): The current date for filtering the news.
 
-    # data news
-    data = []
+    Returns:
+        pd.DataFrame: A DataFrame containing the news data.
+    """
+    try :
+        # Initialize Reddit API client with your credentials
+        reddit = praw.Reddit(
+            client_id='rVofejEZJ37RP4Ht0Di9dg',  
+            client_secret='KoytCCII7wPYlSY0Hf7jUpZ_yPn59g',  
+            user_agent='BTC News Scraper v1'  
+        )
 
-    # Subreddit for Bitcoin news
-    subreddit = reddit.subreddit('Bitcoin')
+        # Define the date range (2020 to now)
+        start_date = datetime(2019, 1, 1)
 
-    # Fetch posts in chunks (Reddit limits you to top, hot, or new posts)
-    for submission in subreddit.top(time_filter='all', limit=100000):  # Increase the limit as needed, based on rate limits
-        post_date = datetime.utcfromtimestamp(submission.created_utc)
-        if start_date <= post_date <= current_date:
-            data.append(
-                {"Title":submission.title,
-                "URL":submission.url,
-                #"Score":submission.score,
-                "Published":post_date,
-                        })
-            
-    # convert data to dataframe
-    df_news = pd.DataFrame(data)
+        # data news
+        data = []
 
-    # get only year-month-day format
-    df_news["Published"] = df_news["Published"].apply(lambda x: str(x).split(" ")[0].strip())
+        # Subreddit for Bitcoin news
+        subreddit = reddit.subreddit('Bitcoin')
 
-    # set Published column as index
-    df_news.set_index('Published', inplace=True, drop=True)
+        # Fetch posts in chunks
+        for submission in subreddit.top(time_filter='all', limit=100000):  
+            post_date = datetime.utcfromtimestamp(submission.created_utc)
+            if start_date <= post_date <= current_date:
+                data.append(
+                    {"Title":submission.title,
+                    "URL":submission.url,
+                    #"Score":submission.score,
+                    "Published":post_date,
+                            })
+                
+        # convert data to dataframe 
+        df_news = pd.DataFrame(data)
 
-    return df_news
+        # get only year-month-day format
+        df_news["Published"] = df_news["Published"].apply(lambda x: str(x).split(" ")[0].strip())
+
+        # set Published column as index
+        df_news.set_index('Published', inplace=True, drop=True)
+
+        return df_news
+    
+    except Exception as e:
+        logging.error(f"Error in get_historical_news: {e}")
+        st.session_state.app_error_count.inc() 
+        return None 
 
 
 
 def get_historical_prices(current_date):
-    # Fetch cryptocurrency data (e.g., Bitcoin)
-    btc_data = yf.download('BTC-USD', start='2019-01-01', end=current_date)
+    """
+    Fetches historical prices for Bitcoin and S&P 500 and returns them in a merged DataFrame.
 
-    # Assume you have another dataset, such as S&P 500
-    sp500_data = yf.download('^GSPC', start='2019-01-01', end=current_date)
+    Parameters:
+        current_date (str): The end date for fetching the data.
 
+    Returns:
+        pd.DataFrame: Merged DataFrame with Bitcoin and S&P 500 prices.
+    """
+    try:
+        # Fetch cryptocurrency data (e.g., Bitcoin)
+        btc_data = yf.download('BTC-USD', start='2019-01-01', end=current_date)
 
-    # Get only level 0 columns
-    btc_data.columns = btc_data.columns.levels[0]
-    sp500_data.columns = sp500_data.columns.levels[0]
+        # Assume you have another dataset, such as S&P 500
+        sp500_data = yf.download('^GSPC', start='2019-01-01', end=current_date)
 
-    # merge both btc and sp500 dataframes
-    btc_sp500_data  = pd.merge(btc_data, sp500_data, left_index = True, right_index = True, suffixes=('_BTC', '_S&P500'))
+        # Get only level 0 columns
+        btc_data.columns = btc_data.columns.levels[0]
+        sp500_data.columns = sp500_data.columns.levels[0]
 
-    # convert datetime format to string
-    btc_sp500_data.index = btc_sp500_data.index.strftime('%Y-%m-%d')
+        # merge both btc and sp500 dataframes
+        btc_sp500_data  = pd.merge(btc_data, sp500_data, left_index = True, right_index = True, suffixes=('_BTC', '_S&P500'))
 
-    return btc_sp500_data
+        # convert datetime format to string
+        btc_sp500_data.index = btc_sp500_data.index.strftime('%Y-%m-%d')
 
+        return btc_sp500_data
+    
+    except Exception as e:
+        logging.error(f"Error in get_historical_prices: {e}")
+        st.session_state.app_error_count.inc() 
+        return None 
+    
 
 def load_roberta_model():
-
-    # Load model and tokenizer
-    model_name = "cardiffnlp/twitter-roberta-base-sentiment"  # You can change this to any 3-class sentiment model
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-
-    return model, tokenizer
-
-
-def load_prophet_model():
-    # Load the model with joblib
-    loaded_model = joblib.load('weights/prophet_model.joblib')
-
-    return loaded_model
+    """
+    Loads the RoBERTa model for sentiment classification.
+    """
+    try:
+        # Load model and tokenizer
+        model_name = "cardiffnlp/twitter-roberta-base-sentiment"  # You can change this to any 3-class sentiment model
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        return model, tokenizer
+        
+    except Exception as e:
+        logging.error(f"Error loading model {model_name}: {e}")
+        st.session_state.app_error_count.inc() 
+        return None 
 
 
 def sentiment_classification(text):
-    if pd.isna(text):
-        return 0
+    """
+    Classifies sentiment of the input text.
+
+    Parameters:
+        text (str): The text to classify.
+
+    """
+    try:
+        if pd.isna(text):
+            return 0
+        
+        # Tokenize the input text
+        inputs = st.session_state.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+
+        # Get model predictions
+        with torch.no_grad():
+            outputs = st.session_state.model(**inputs)
+            logits = outputs.logits
+        
+        # Apply softmax to get probabilities for each class
+        probabilities = torch.nn.functional.softmax(logits, dim=-1)
+        finale_probability = probabilities[0][2].item() - probabilities[0][0].item()
+
+        # finale_probability is in the range [-1, +1] 
+        return finale_probability
     
-    # Tokenize the input text
-    inputs = st.session_state.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-
-    # Get model predictions
-    with torch.no_grad():
-        outputs = st.session_state.model(**inputs)
-        logits = outputs.logits
-    
-    # Apply softmax to get probabilities for each class
-    probabilities = torch.nn.functional.softmax(logits, dim=-1)
-
-    finale_probability = probabilities[0][2].item() - probabilities[0][0].item()
-
-    # finale_probability is in the range [-1, +1] 
-    return finale_probability
+    except Exception as e:
+        logging.error(f"Error in sentiment_classification: {e}")
+        st.session_state.app_error_count.inc() 
+        return None 
 
 
+def retrain_load_prophet(data_train, data_test, train_size):
+    """
+    Retrains the Prophet model and loads the latest run.
+
+    Parameters:
+        data_train (DataFrame): The training data.
+        data_test (DataFrame): The testing data.
+        train_size (float): The train-test split ratio.
+
+    Returns:
+        Loaded Prophet model.
+    """
+    start_time = time.time()
+    logging.info('start retraining ... ')
+
+    try:
+        # retrain prophet model
+        train_prophet_model(data_train, data_test, train_size, 'ds', 'y')
+
+        # Time taken for Prophet model training
+        st.session_state.prophet_model_training_duration.observe(time.time() - start_time)
+        logging.info('end retraining ... ')
+
+        # Increment prophet model retraining counter
+        st.session_state.prophet_model_retrain_count.inc() 
+
+        # Retrieve the latest run
+        runs = mlflow.search_runs(order_by=["start_time desc"])
+
+        # Check if any runs were found
+        if not runs.empty:
+            logging.info("runs found ... ")
+            # Get the most recent run
+            latest_run = runs.iloc[0]  
+            run_id = latest_run.run_id
+            logging.info('last prophet model is fetched ... ')
+
+            # Load the model from the most recent run
+            model_uri = f"runs:/{run_id}/prophet_model"
+            return mlflow.pyfunc.load_model(model_uri)
+
+    except Exception as e:
+        logging.error(f"Error in retraining Prophet model: {e}")
+        st.session_state.app_error_count.inc()
+        return None
+        
 
 
 
@@ -169,7 +282,6 @@ def main():
     # Define the title
     st.title("✨ Stock Price forecasting Dashboard")
 
-
     # get current date
     current_date = datetime.now()
 
@@ -177,7 +289,7 @@ def main():
         st.session_state.model, st.session_state.tokenizer =  load_roberta_model()
 
     if 'prophet' not in st.session_state:
-        st.session_state.prophet_model=load_prophet_model()      
+            st.session_state.prophet_model = None
 
     if 'df_news' not in st.session_state:
         # get df_news
@@ -214,13 +326,8 @@ def main():
 
         # Rename columns columns
         st.session_state.merged_data.rename(columns={date:'ds', target:'y'}, inplace = True)
-
-
-        print("columns --- : ", st.session_state.merged_data.columns)
-
-
-
-
+        logging.info("columns --- : ", st.session_state.merged_data.columns)
+        logging.info("Shape --- : ", st.session_state.merged_data.shape)
 
 
     # Define x_min, x_max, y_min and y_max
@@ -370,11 +477,16 @@ def main():
     # Lists of true and predicted values and dates
     y_pred, y_true, dates = [], [], []
 
+    # number of days to consider to assess the MAE of the model
+    nb_days = 5
+
+    compt = 0 
+
     # If one of the button is pressed
     if model_arima or model_lstm or model_prophet:
         # Spinner for long operations
         with st.spinner('Processing...'):
-            for train_size in range(10, len(st.session_state.merged_data), 30):
+            for train_size in range(50, len(st.session_state.merged_data), 150):
                 # Define train and test datasets
                 data_train, data_test = st.session_state.merged_data[:train_size], st.session_state.merged_data[train_size:] 
                 
@@ -390,21 +502,38 @@ def main():
 
                 # if PROPHET was selected
                 if model_prophet:
+
+                    # Retrieve the latest run
+                    runs = mlflow.search_runs(order_by=["start_time desc"])
+
+                    # train the model for the first time 
+                    if not st.session_state.prophet_model:
+                        st.session_state.prophet_model = retrain_load_prophet(data_train, data_test, train_size)
+
+                    # start time
+                    start_time = time.time()
+
                     # Predict future values
                     forecast = st.session_state.prophet_model.predict(data_test[['ds']])
+                    
+                    # Track request duration
+                    st.session_state.request_duration.observe(time.time() - start_time)
 
                     # Extract the forecasted values and dates
                     forecasted_values = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
-                    if mean_squared_error(data_test['y'], forecasted_values['yhat']) > 1000:
-                        print('start retraining ... ')
-                        # retrain prophet model
-                        train_prophet_model(data_train, data_test, 'ds', 'y')
+                    print("Shape of predictions : ", st.session_state.df_predictions.shape)
+                    # retrain the model when the MAE is greater than 1000$ during the last nb_days
+                    if len(st.session_state.df_predictions)>0:
+                        print("YESSSSSSSSS")
+                        if compt < 4:
+                            compt += 1
+                            if mean_squared_error(st.session_state.df_predictions["y_true"][-nb_days:],  st.session_state.df_predictions["y_pred"][-nb_days:]) > 1000:
+                                st.session_state.prophet_model = retrain_load_prophet(data_train, data_test, train_size)
+                                st.session_state.model_error_rate.set(0)
+                            else:
+                                st.session_state.model_error_rate.set(1)
 
-                        # fetch the last version of the model
-                        model_uri = "models:/prophet_model/latest"  
-                        st.session_state.prophet_model = mlflow.prophet.load_model(model_uri)
-                        print('last prophet model is fetched ... ')
 
                 # current price 
                 current_price = data_test['y'].iloc[0]
@@ -573,11 +702,13 @@ def main():
                 plot_perf_model.plotly_chart(fig_1)
 
 
-            # save date, true value and predicted value
-            st.session_state.df_predictions["ds"] = dates
-            st.session_state.df_predictions["y_true"] = y_true
-            st.session_state.df_predictions["y_pred"] = y_pred
+                # save date, true value and predicted value
+                st.session_state.df_predictions.loc[len(st.session_state.df_predictions)] = [data_train['ds'].iloc[-1], data_train['y'].iloc[-1], next_predicted_value]
+            # st.session_state.df_predictions["Date"] = dates
+            # st.session_state.df_predictions["y_true"] = y_true
+            # st.session_state.df_predictions["y_pred"] = y_pred
 
+        st.session_state.df_predictions.to_excel("df_predictions.xlsx")
 
 
 
