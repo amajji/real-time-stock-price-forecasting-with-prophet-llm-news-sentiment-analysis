@@ -1,6 +1,0 @@
-artifact_location: mlflow-artifacts:/252911108173376035
-creation_time: 1740334465553
-experiment_id: '252911108173376035'
-last_update_time: 1740334465553
-lifecycle_stage: active
-name: mlflow-prophet-model
