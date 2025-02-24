@@ -48,7 +48,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
     depends_on:
-      - streamlit  # Ensure that Streamlit service is started before Prometheus
+      - streamlit  
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090"]
       interval: 30s
@@ -64,7 +64,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin  # Set Grafana password here
     depends_on:
-      - prometheus  # Ensure Prometheus is ready before Grafana
+      - prometheus  
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
