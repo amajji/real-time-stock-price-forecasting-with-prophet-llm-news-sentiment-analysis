@@ -4,15 +4,17 @@ from datetime import datetime
 import pandas as pd
 import logging
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from dotenv import load_dotenv
 import subprocess
 import os
 
 
+# Load environment variables from the .env file
+load_dotenv()
+
 # API constants for fetching data
 CLIENT_ID = os.getenv('CLIENT_ID')
 CLIENT_SECRET = os.getenv('CLIENT_SECRET')
-
 
 
 def get_historical_news(current_date):

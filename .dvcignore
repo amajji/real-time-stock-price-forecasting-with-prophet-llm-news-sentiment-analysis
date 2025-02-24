@@ -20,5 +20,7 @@ mlartifacts/
 # Ignore docker-specific files
 *.tar
 *.gz
+.env
+
 
 

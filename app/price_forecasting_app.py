@@ -17,7 +17,7 @@
 ################################################################################################################
 
 
-####### #########################################################################################################
+################################################################################################################
 #                                                  Packages                                                    #
 ################################################################################################################
 import sys
@@ -36,7 +36,7 @@ from src.data_preprocessing import DataPreprocessing
 from src.model_training import ModelTraining
 from src.visualization import Visualization
 from src.investment_tracker import InvestmentTracker
-from src.arima_lstm_models import arima_model, lstm_model
+from src.lstm_arima_models import LstmArimaModels
 ################################################################################################################
 #                                                   Main code                                                  #
 ################################################################################################################
@@ -72,6 +72,12 @@ def main():
     # Create an instance of SentimentAnalysis
     sentiment_analyzer_inc = SentimentAnalysis()
 
+    # Create an instance of LstmArimaModels
+    lstm_arima_models_inc = LstmArimaModels()
+
+    # Create an instance of ModelTraining
+    model_training_inc = ModelTraining()
+
     # Create an instance of Visualization
     visualization_inc = Visualization()
 
@@ -86,7 +92,6 @@ def main():
 
     if 'prophet' not in st.session_state:
             st.session_state.prophet_model = None
-
 
     if 'merged_data' not in st.session_state:        
         # Load data (both price and news)
@@ -229,25 +234,22 @@ def main():
                 # If ARIMA was selected
                 if model_arima:
                     # Get forecasted values using ARIMA model
-                    data_train, data_test, forecasted_values = arima_model(data_train, data_test, 'ds', 'y', retrain=False)
+                    data_train, data_test, forecasted_values = lstm_arima_models_inc.arima_model(data_train, data_test, 'ds', 'y', retrain=False)
 
                 # if LSTM was selected
                 if model_lstm:
                     # Get forecasted values using LSTM model
-                    data_train, data_test, forecasted_values = lstm_model(data_train, data_test, 'ds', 'y', retrain=False)
+                    data_train, data_test, forecasted_values = lstm_arima_models_inc.lstm_model(data_train, data_test, 'ds', 'y', retrain=False)
 
                 # if PROPHET was selected
                 if model_prophet:
-
-                    # Create an instance of ModelTraining
-                    model_training = ModelTraining()
 
                     # Retrieve the latest run
                     runs = mlflow.search_runs(order_by=["start_time desc"])
 
                     # train the model for the first time 
                     if not st.session_state.prophet_model: 
-                        st.session_state.prophet_model = model_training.retrain_load_prophet(data_train, data_test, train_size)
+                        st.session_state.prophet_model = model_training_inc.retrain_load_prophet(data_train, data_test, train_size)
 
                     # start time
                     start_time = time.time()
@@ -268,7 +270,7 @@ def main():
                         if compt < 4:
                             compt += 1
                             if mean_squared_error(st.session_state.df_predictions["y_true"][-nb_days:],  st.session_state.df_predictions["y_pred"][-nb_days:]) > 1000:
-                                st.session_state.prophet_model = model_training.retrain_load_prophet(data_train, data_test, train_size)
+                                st.session_state.prophet_model = model_training_inc.retrain_load_prophet(data_train, data_test, train_size)
                                 st.session_state.model_error_rate.set(0)
                             else:
                                 st.session_state.model_error_rate.set(1)

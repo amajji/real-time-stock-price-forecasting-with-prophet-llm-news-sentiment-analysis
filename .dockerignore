@@ -14,3 +14,4 @@ __pycache__/
 
 # Ignore other unnecessary files
 *.gitignore
+.env

@@ -17,6 +17,9 @@ class DataPreprocessing():
         # Load historical news and prices
         self.df_news = get_historical_news(self.current_date)
         self.df_btc_sp500_data = get_historical_prices(self.current_date)
+
+        logging.info("Shape df_news --- : ", self.df_news.shape)
+        logging.info("Shape df_btc_sp500_data --- : ", self.df_btc_sp500_data.shape)
     
         # Load the sentiment model (only once)
         self.sentiment_analyzer.load_roberta_model() 

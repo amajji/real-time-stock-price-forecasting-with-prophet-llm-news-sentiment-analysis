@@ -6,6 +6,7 @@ mlruns/
 mlartifacts/
 dvc_storage/
 app/Crypto-price-forcasting.ipynb
+mlflow.db
 
 # Ignore Python bytecode files
 *.pyc
