@@ -16,7 +16,7 @@ services:
       interval: 30s
       retries: 3
       start_period: 10s
-      timeout: 10s
+      timeout: 10s  
 
   streamlit:
     build: 
@@ -29,7 +29,7 @@ services:
       - CLIENT_SECRET=${CLIENT_SECRET}
       - MLFLOW_TRACKING_URI=http://mlflow:5000  # Point Streamlit to the MLflow server
     depends_on:
-      - mlflow  # Ensure that MLflow service is started before Streamlit
+      - mlflow  
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501"]
       interval: 30s
@@ -62,7 +62,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin  # Set Grafana password here
+      - GF_SECURITY_ADMIN_PASSWORD=admin 
     depends_on:
       - prometheus  
     healthcheck:

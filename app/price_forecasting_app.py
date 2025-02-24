@@ -8,7 +8,7 @@
 
 #                                          Source Language: Python                                             #
 
-#  Repository:  https://github.com/amajji/real-time-crypto-forecasting-with-arima-prophet-llm-news-sentiment    #
+#  Repository:  https://github.com/amajji/real-time-crypto-forecasting-with-arima-prophet-llm-news-sentiment   #
 
 #                                          --- Code Description ---                                            #
 
@@ -23,7 +23,6 @@
 import sys
 import os
 import streamlit as st
-from pmdarima import auto_arima
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import plotly.graph_objects as go
 import mlflow
@@ -45,12 +44,10 @@ from src.lstm_arima_models import LstmArimaModels
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 # Set the URI for the MLflow tracking server
-mlflow.set_tracking_uri("http://127.0.0.1:5000/")
-#mlflow.set_tracking_uri("http://mlflow:5000")
+mlflow.set_tracking_uri("http://mlflow:5000")
 
 # Set the experiment name for MLflow 
 mlflow.set_experiment("mlflow-prophet-model")
-
 
 # Main streamlit page
 def main():
