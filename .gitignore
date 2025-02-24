@@ -19,5 +19,6 @@ mlflow.db
 # Ignore log files
 *.log
 
-# Ignore dvc files
+# Ignore dvc and env files
 *.dvc
+*.env
