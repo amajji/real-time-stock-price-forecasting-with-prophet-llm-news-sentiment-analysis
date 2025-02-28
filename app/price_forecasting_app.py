@@ -263,7 +263,6 @@ def main():
                     print("Shape of predictions : ", st.session_state.df_predictions.shape)
                     # retrain the model when the MAE is greater than 1000$ during the last nb_days
                     if len(st.session_state.df_predictions)>0:
-                        print("YESSSSSSSSS")
                         if compt < 4:
                             compt += 1
                             if mean_squared_error(st.session_state.df_predictions["y_true"][-nb_days:],  st.session_state.df_predictions["y_pred"][-nb_days:]) > 1000:
