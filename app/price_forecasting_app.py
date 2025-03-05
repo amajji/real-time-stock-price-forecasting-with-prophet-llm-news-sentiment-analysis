@@ -12,7 +12,7 @@
 
 #                                          --- Code Description ---                                            #
 
-#    Deploy LLM RAG Chatbot with Langchain on a Streamlit web application using only CPU                       #
+#  Development of a real time price forecasting dashboard using Prophet and news sentiment analysis with LLM   #
 
 ################################################################################################################
 
