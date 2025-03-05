@@ -4,9 +4,9 @@ Data scientist | [Anass MAJJI](https://www.linkedin.com/in/anass-majji-729773157
 
 ## :monocle_face: Description
 <p align="center">
-  <img src="static/steps.png" alt="steps" width="700"/>
+  <img src="static/steps.png" alt="steps" width="700" height="500"/>
 </p>
-- This project combines both real-time and historical stock price data with news sentiment analysis to provide more accurate price forecasts and analyze market trends. The sentiment analysis is performed using models like DistilBERT or a quantized version of LLaMA with 1 billion paramters, which analyze stock related news and generate sentiment scores. These sentiment scores are then integrated into one of the price forecasting models such as ARIMA, LSTM, and Prophet.
+This project combines both real-time and historical stock price data with news sentiment analysis to provide more accurate price forecasts and analyze market trends. The sentiment analysis is performed using models like DistilBERT or a quantized version of LLaMA with 1 billion paramters, which analyze stock related news and generate sentiment scores. These sentiment scores are then integrated into one of the price forecasting models such as ARIMA, LSTM, and Prophet.
 
 - By incorporating sentiment analysis as an additional feature, the models can take into account external factors (news sentiment) that may influence stock's future price movements. 
 
